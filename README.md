@@ -18,7 +18,7 @@ volant start
 volant stop
 volant status
 volant run
-volant exec <arguments...>
+volant exec -- <arguments...>
 volant snapshot
 ```
 
@@ -56,7 +56,7 @@ volant run
 Execute the command on the guest's container.
 
 ```
-volant exec bash
+volant exec -- bash
 ```
 
 Save the state of the guest's container.

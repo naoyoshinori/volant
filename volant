@@ -83,7 +83,7 @@ volant_run()
 
   if [ "$status" = "STOPPED" ]; then
     volant_start $container $host_dir $guest_dir
-    sleep 2
+    sleep 10
   fi
 
   lxc exec $container -- bash -c "cd $guest_dir; bash $volantfile"
@@ -95,9 +95,10 @@ volant_run()
 
 volant_exec()
 {
-  local container=$1; shift 1
-  local host_dir=$2;  shift 1
-  local guest_dir=$3; shift 1
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+  shift 3
 
   volant_exists $container
 
@@ -180,7 +181,7 @@ Command:
 
   volant run
 
-  volant exec <arguments...>
+  volant exec -- <arguments...>
 
   volant snapshot
 
@@ -205,6 +206,7 @@ do
     run|exec| \
     snapshot)
                          COMMAND=$1; shift 1;;
+    --)                  shift 1; ARGV=$*;;
     -h|--help)           usage && exit 0;;
     --version)           version && exit 0;;
     *)                   break ;;
@@ -219,7 +221,7 @@ if [ "$host_dir" = "" ]; then
   host_dir=$(pwd)
 fi
 
-if [ "$guset_dir" = "" ]; then
+if [ "$guest_dir" = "" ]; then
   guest_dir=/volant
 fi
 
@@ -256,7 +258,7 @@ case "$COMMAND" in
     volant_run $container $host_dir $guest_dir $volantfile
     ;;
   exec)
-    volant_exec $container $host_dir $guest_dir $*
+    volant_exec $container $host_dir $guest_dir $ARGV
     ;;
   snapshot)
     volant_snapshot $container $host_dir $guest_dir
