@@ -1,0 +1,268 @@
+#!/bin/sh
+
+VERSION=0.0.1
+SNAPSHOT_NAME=volant0
+DEVICE_NAME=volant
+
+volant_init()
+{
+  local container=$1
+
+  lxc launch ubuntu:18.04 $container
+
+  lxc stop $container
+
+  lxc snapshot $container $SNAPSHOT_NAME
+}
+
+volant_delete()
+{
+  local container=$1
+
+  volant_exists $container
+
+  lxc delete $container
+}
+
+volant_start()
+{
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+  local status=$(volant_status $container)
+
+  volant_exists $container
+
+  if [ "$status" = "RUNNING" ]; then
+    return
+  fi
+
+  lxc restore $container $SNAPSHOT_NAME
+
+  volant_device_add $container $host_dir $guest_dir
+
+  lxc start $container
+}
+
+volant_stop()
+{
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+  local status=$(volant_status $container)
+
+  volant_exists $container
+
+  if [ "$status" = "STOPPED" ]; then
+    return
+  fi
+
+  lxc stop $container
+
+  volant_device_remove $container $host_dir $guest_dir
+}
+
+volant_status()
+{
+  local container=$1
+
+  volant_exists $container
+
+  lxc list $container --format csv -c s
+}
+
+volant_run()
+{
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+  local volantfile=$4
+  local status=$(volant_status $container)
+
+  volant_exists $container
+
+  if [ "$status" = "STOPPED" ]; then
+    volant_start $container $host_dir $guest_dir
+    sleep 2
+  fi
+
+  lxc exec $container -- bash -c "cd $guest_dir; bash $volantfile"
+
+  if [ "$status" = "STOPPED" ]; then
+    volant_stop $container
+  fi
+}
+
+volant_exec()
+{
+  local container=$1; shift 1
+  local host_dir=$2;  shift 1
+  local guest_dir=$3; shift 1
+
+  volant_exists $container
+
+  lxc exec $container -- bash -c "cd $guest_dir; exec $*"
+}
+
+volant_snapshot()
+{
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+  local status=$(volant_status $container)
+
+  volant_exists $container
+
+  if [ "$status" = "RUNNING" ]; then
+    volant_device_remove $container $host_dir $guest_dir
+  fi
+
+  lxc delete $container/$SNAPSHOT_NAME
+
+  lxc snapshot $container $SNAPSHOT_NAME
+
+  if [ "$status" = "RUNNING" ]; then
+    volant_device_add $container $host_dir $guest_dir
+  fi
+}
+
+volant_device_add()
+{
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+
+  lxc config device add $container $DEVICE_NAME disk source=$host_dir path=$guest_dir
+}
+
+volant_device_remove()
+{
+  local container=$1
+  local host_dir=$2
+  local guest_dir=$3
+
+  lxc config device remove $container $DEVICE_NAME
+}
+
+volant_exists()
+{
+  local container=$1
+  local name=$(lxc list $container --format csv -c n)
+
+  if [ "$name" = "" ]; then
+    echo "There is no container."
+    exit 1
+  fi
+}
+
+usage()
+{
+  cat <<EOF
+Usage:
+
+  volant <command> <arguments...> [options...]
+
+Description:
+
+  This 'volant' creates a container with immutable lxc. This container can be repeatedly tested.
+
+Command:
+
+  volant init
+
+  volant delete
+
+  volant start
+
+  volant stop
+
+  volant status
+
+  volant run
+
+  volant exec <arguments...>
+
+  volant snapshot
+
+Options:
+
+  --version                 this version
+
+  -h, --hellp               print this help text
+EOF
+}
+
+version()
+{
+  echo "volant version $VERSION"
+}
+
+while true
+do
+  case "$1" in
+    init|delete| \
+    start|stop|status| \
+    run|exec| \
+    snapshot)
+                         COMMAND=$1; shift 1;;
+    -h|--help)           usage && exit 0;;
+    --version)           version && exit 0;;
+    *)                   break ;;
+  esac
+done
+
+if [ "$container" = "" ]; then
+  container=$(basename $(pwd))
+fi
+
+if [ "$host_dir" = "" ]; then
+  host_dir=$(pwd)
+fi
+
+if [ "$guset_dir" = "" ]; then
+  guest_dir=/volant
+fi
+
+if [ "$volantfile" = "" ]; then
+  volantfile=Volantfile.sh
+fi
+
+if [ ! -e "$volantfile" ]; then
+  echo "There is no '$volantfile' file."
+  exit 1
+fi
+
+if [ "$COMMAND" = "" ]; then
+  usage && exit 1
+fi
+
+case "$COMMAND" in
+  init)
+    volant_init $container
+    ;;
+  delete)
+    volant_delete $container
+    ;;
+  start)
+    volant_start $container $host_dir $guest_dir
+    ;;
+  stop)
+    volant_stop $container $host_dir $guest_dir
+    ;;
+  status)
+    volant_status $container
+    ;;
+  run)
+    volant_run $container $host_dir $guest_dir $volantfile
+    ;;
+  exec)
+    volant_exec $container $host_dir $guest_dir $*
+    ;;
+  snapshot)
+    volant_snapshot $container $host_dir $guest_dir
+    ;;
+  *)
+    usage && exit 1
+    ;;
+esac
+
