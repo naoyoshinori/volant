@@ -8,9 +8,7 @@ volant_init()
 {
   local container=$1
 
-  lxc launch ubuntu:18.04 $container
-
-  lxc stop $container
+  lxc init ubuntu:18.04 $container
 
   lxc snapshot $container $SNAPSHOT_NAME
 }
