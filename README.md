@@ -19,7 +19,11 @@ volant stop
 volant status
 volant run
 volant exec -- <arguments...>
-volant snapshot
+volant save
+volant commit
+volant rollback
+volant info
+volant list
 ```
 
 ## Example
@@ -62,7 +66,7 @@ volant exec -- bash
 Save the state of the guest's container.
 
 ```
-volant snapshot
+volant save
 ```
 
 It is the start and stop of the container.
