@@ -9,6 +9,7 @@ volant_init()
   local ephemeral=$2
   local host_dir=$3
   local guest_dir=$4
+  local image=$5
 
   volant_exists $container
 
@@ -17,7 +18,11 @@ volant_init()
     return 1
   fi
 
-  lxc init ubuntu:18.04 $container
+  lxc init $image $container
+
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
 
   lxc snapshot $container
 
@@ -240,6 +245,12 @@ volant_rollback()
   local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
 
   lxc restore $container $revision
+
+  lxc delete $ephemeral
+
+  lxc copy $container $ephemeral -e
+
+  volant_device_add $ephemeral $host_dir $guest_dir
 }
 
 volant_device_add()
@@ -334,6 +345,15 @@ do
   esac
 done
 
+if [ "$volantfile" = "" ]; then
+  volantfile=Volantfile.sh
+fi
+
+if [ ! -e "$volantfile" ]; then
+  echo "There is no '$volantfile' file."
+  exit 1
+fi
+
 if [ ! -e .cache ]; then
   mkdir -p .cache
 fi
@@ -360,22 +380,13 @@ if [ "$guest_dir" = "" ]; then
   guest_dir=/volant
 fi
 
-if [ "$volantfile" = "" ]; then
-  volantfile=Volantfile.sh
-fi
-
-if [ ! -e "$volantfile" ]; then
-  echo "There is no '$volantfile' file."
-  exit 1
-fi
-
 if [ "$COMMAND" = "" ]; then
   usage && exit 1
 fi
 
 case "$COMMAND" in
   init)
-    volant_init $container $ephemeral $host_dir $guest_dir
+    volant_init $container $ephemeral $host_dir $guest_dir $*
     ;;
   delete)
     volant_delete $container $ephemeral $host_dir $guest_dir
