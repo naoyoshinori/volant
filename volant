@@ -1,256 +1,137 @@
 #!/bin/sh
 
-VERSION=0.0.2
+VERSION=0.0.5
 DEVICE_NAME=volant
 
 volant_init()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
-  local image=$5
+  local image=$2
 
-  volant_exists $container
-
-  if [ $? -eq 0 ]; then
-    echo "Container already exists."
-    return 1
+  if [ "$image" = "" ]; then
+    echo "The image is blank. Please set the image."
+    exit 1
   fi
 
   lxc init $image $container
 
   if [ $? -ne 0 ]; then
-    return 1
+    echo "Error creating this container."
+    exit 1
   fi
 
-  lxc snapshot $container
-
-  lxc copy $container $ephemeral -e
-
-  volant_device_add $ephemeral $host_dir $guest_dir
+  volant_commit $container
 }
 
 volant_delete()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
-
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
 
   lxc delete $container
-  lxc delete $ephemeral
+
+  if [ $? -ne 0 ]; then
+    echo "Error deleting this container."
+    exit 1
+  fi
 }
 
 volant_start()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
+  local host_dir=$2
+  local guest_dir=$3
+  local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
 
-  volant_exists $container
+  lxc restore $container $revision
 
   if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
+    echo "Error while restoring this container."
+    exit 1
   fi
 
-  local status=`volant_status $container $ephemeral`
+  volant_device_add $container $host_dir $guest_dir
 
-  if [ "$status" = "RUNNING" ]; then
-    echo "Container has already started."
-    return 0
+  lxc start $container
+
+  if [ $? -ne 0 ]; then
+    echo "Error while starting this container."
+    exit 1
   fi
-
-  lxc start $ephemeral
 }
 
 volant_stop()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
+  local host_dir=$2
+  local guest_dir=$3
 
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
-
-  local status=`volant_status $container $ephemeral`
-
-  if [ "$status" = "STOPPED" ]; then
-    echo "Container has already stopped."
-    return 0
-  fi
-
-  lxc stop $ephemeral
-
-  lxc copy $container $ephemeral -e
-
-  volant_device_add $ephemeral $host_dir $guest_dir
-}
-
-volant_status()
-{
-  local container=$1
-  local ephemeral=$2
-
-  volant_exists $container
+  lxc stop $container
 
   if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
+    echo "Error while stopping this container."
+    exit 1
   fi
 
-  lxc list $ephemeral --format csv -c s
+  volant_device_remove $container $host_dir $guest_dir
 }
 
 volant_run()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
-  local volantfile=$5
+  local host_dir=$2
+  local guest_dir=$3
+  local volantfile=$4
 
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
-
-  local status=`volant_status $container $ephemeral`
-
-  if [ "$status" = "STOPPED" ]; then
-    volant_start $container $ephemeral $host_dir $guest_dir
-    sleep 5
-  fi
-
-  lxc exec $ephemeral -- bash -c "cd $guest_dir; bash $volantfile"
+  lxc exec $container -- bash -c "cd $guest_dir; bash $volantfile"
 }
 
 volant_exec()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
-  shift 4
+  local host_dir=$2
+  local guest_dir=$3
+  shift 3
 
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
-
-  local status=`volant_status $container $ephemeral`
-
-  if [ "$status" = "STOPPED" ]; then
-    volant_start $container $ephemeral $host_dir $guest_dir
-    sleep 5
-  fi
-
-  lxc exec $ephemeral -- bash -c "cd $guest_dir; exec $*"
-}
-
-volant_save()
-{
-  local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
-
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
-
-  local status=`volant_status $container $ephemeral`
-
-  if [ "$status" = "STOPPED" ]; then
-    echo "Container is stopped."
-    return 1
-  fi
-
-  local new_container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
-
-  volant_device_remove $ephemeral $host_dir $guest_dir
-
-  lxc copy $ephemeral $new_container
-
-  volant_device_add $ephemeral $host_dir $guest_dir
-
-  lxc delete $container
-
-  echo $new_container > .cache/name
+  lxc exec $container -- bash -c "cd $guest_dir; exec $*"
 }
 
 volant_commit()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
-
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
 
   lxc snapshot $container
+
+  if [ $? -ne 0 ]; then
+    echo "Error during snapshot of this container."
+    exit 1
+  fi
 }
 
 volant_rollback()
 {
   local container=$1
-  local ephemeral=$2
-  local host_dir=$3
-  local guest_dir=$4
+  local count=`lxc info $container | grep -E 'snap[0-9]+' | awk '{print $1}' | wc -w`
 
-  volant_exists $container
-
-  if [ $? -ne 0 ]; then
-    echo "There is no container."
-    return 1
-  fi
-
-  local cnt=`lxc info $container | grep -E 'snap[0-9]+' | awk '{print $1}' | wc -w`
-
-  if [ $cnt -lt 2 ]; then
-    echo "I can not roll back any more."
-    return 1
+  if [ $count -le 1 ]; then
+    echo "This container can not be rolled back any more."
+    exit 1
   fi
 
   local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
-
   lxc delete $container/$revision
 
-  local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
+  if [ $? -ne 0 ]; then
+    echo "Error deleting this container."
+    exit 1
+  fi
 
+  local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
   lxc restore $container $revision
 
-  lxc delete $ephemeral
-
-  lxc copy $container $ephemeral -e
-
-  volant_device_add $ephemeral $host_dir $guest_dir
+  if [ $? -ne 0 ]; then
+    echo "Error while restoring this container."
+    exit 1
+  fi
 }
 
 volant_device_add()
@@ -260,6 +141,11 @@ volant_device_add()
   local guest_dir=$3
 
   lxc config device add $container $DEVICE_NAME disk source=$host_dir path=$guest_dir 1> /dev/null
+
+  if [ $? -ne 0 ]; then
+    echo "Error adding device to this container."
+    exit 1
+  fi
 }
 
 volant_device_remove()
@@ -269,14 +155,55 @@ volant_device_remove()
   local guest_dir=$3
 
   lxc config device remove $container $DEVICE_NAME 1> /dev/null
+
+  if [ $? -ne 0 ]; then
+    echo "Error deleting device from this container."
+    exit 1
+  fi
 }
 
-volant_exists()
+volant_exit_if_exists()
 {
   local container=$1
   local name=$(lxc list $container --format csv -c n)
 
-  test "$name" != ""
+  if [ "$name" != "" ]; then
+    echo "This container exists."
+    exit 1
+  fi
+}
+
+volant_exit_if_not_exists()
+{
+  local container=$1
+  local name=$(lxc list $container --format csv -c n)
+
+  if [ "$name" = "" ]; then
+    echo "This container does not exist."
+    exit 1
+  fi
+}
+
+volant_exit_if_started()
+{
+  local container=$1
+  local status=$(lxc list $container --format csv -c s)
+
+  if [ "$status" = "RUNNING" ]; then
+    echo "This container is running."
+    exit 1
+  fi
+}
+
+volant_exit_if_stopped()
+{
+  local container=$1
+  local status=$(lxc list $container --format csv -c s)
+
+  if [ "$status" = "STOPPED" ]; then
+    echo "This container is stopped."
+    exit 1
+  fi
 }
 
 usage()
@@ -292,7 +219,7 @@ Description:
 
 Command:
 
-  volant init
+  volant init <image>
 
   volant delete
 
@@ -305,8 +232,6 @@ Command:
   volant run
 
   volant exec -- <arguments...>
-
-  volant save
 
   volant commit
 
@@ -335,7 +260,7 @@ do
     init|delete| \
     start|stop|status| \
     run|exec| \
-    save|commit|rollback| \
+    commit|rollback| \
     info|list)
                          COMMAND=$1; shift 1;;
     --)                  shift 1; ARGV=$*;;
@@ -350,7 +275,7 @@ if [ "$volantfile" = "" ]; then
 fi
 
 if [ ! -e "$volantfile" ]; then
-  echo "There is no '$volantfile' file."
+  echo "This '$volantfile' file does not exist."
   exit 1
 fi
 
@@ -363,13 +288,6 @@ if [ -e ".cache/name" ]; then
 else
   container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
   echo $container > .cache/name
-fi
-
-if [ -e ".cache/ephemeral" ]; then
-  ephemeral=`cat .cache/ephemeral`
-else
-  ephemeral=vme-`date | md5sum | awk '{print substr($1, 0, 9)}'`
-  echo $ephemeral > .cache/ephemeral
 fi
 
 if [ "$host_dir" = "" ]; then
@@ -386,36 +304,50 @@ fi
 
 case "$COMMAND" in
   init)
-    volant_init $container $ephemeral $host_dir $guest_dir $*
+    volant_exit_if_exists $container
+    volant_init $container $*
     ;;
   delete)
-    volant_delete $container $ephemeral $host_dir $guest_dir
+    volant_exit_if_not_exists $container
+    volant_exit_if_started $container
+    volant_delete $container
     ;;
   start)
-    volant_start $container $ephemeral $host_dir $guest_dir
+    volant_exit_if_not_exists $container
+    volant_exit_if_started $container
+    volant_start $container $host_dir $guest_dir
     ;;
   stop)
-    volant_stop $container $ephemeral $host_dir $guest_dir
+    volant_exit_if_not_exists $container
+    volant_exit_if_stopped $container
+    volant_stop $container $host_dir $guest_dir
     ;;
   status)
-    volant_status $container $ephemeral
+    volant_exit_if_not_exists $container
+    lxc list $container --format csv -c s
     ;;
   run)
-    volant_run $container $ephemeral $host_dir $guest_dir $volantfile
+    volant_exit_if_not_exists $container
+    volant_exit_if_stopped $container
+    volant_run $container $host_dir $guest_dir $volantfile
     ;;
   exec)
-    volant_exec $container $ephemeral $host_dir $guest_dir $ARGV
-    ;;
-  save)
-    volant_save $container $ephemeral $host_dir $guest_dir
+    volant_exit_if_not_exists $container
+    volant_exit_if_stopped $container
+    volant_exec $container $host_dir $guest_dir $ARGV
     ;;
   commit)
-    volant_commit $container $ephemeral $host_dir $guest_dir
+    volant_exit_if_not_exists $container
+    volant_exit_if_started $container
+    volant_commit $container
     ;;
   rollback)
-    volant_rollback $container $ephemeral $host_dir $guest_dir
+    volant_exit_if_not_exists $container
+    volant_exit_if_started $container
+    volant_rollback $container
     ;;
   info)
+    volant_exit_if_not_exists $container
     lxc info $container
     ;;
   list)

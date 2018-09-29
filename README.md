@@ -12,14 +12,13 @@ volant <command> <arguments...> [options...]
 ### Command
 
 ```
-volant init
+volant init <image>
 volant delete
 volant start
 volant stop
 volant status
 volant run
 volant exec -- <arguments...>
-volant save
 volant commit
 volant rollback
 volant info
@@ -39,7 +38,7 @@ touch Volantfile.sh
 Create a container.
 
 ```
-volant init
+volant init ubuntu:18.04
 ```
 
 Edit the 'Volantfile.sh' file.
@@ -61,12 +60,6 @@ Execute the command on the guest's container.
 
 ```
 volant exec -- bash
-```
-
-Save the state of the guest's container.
-
-```
-volant save
 ```
 
 It is the start and stop of the container.
