@@ -1,6 +1,6 @@
 #!/bin/sh
 
-VERSION=0.0.5
+VERSION=0.0.6
 DEVICE_NAME=volant
 
 volant_init()
@@ -234,6 +234,8 @@ Command:
 
   volant exec [--work-dir path] -- <arguments...>
 
+  volant login
+
   volant commit
 
   volant rollback
@@ -261,6 +263,7 @@ do
     init|delete| \
     start|stop|status| \
     run|exec| \
+    login| \
     commit|rollback| \
     info|list)
                          COMMAND=$1; shift 1;;
@@ -341,6 +344,11 @@ case "$COMMAND" in
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
     volant_exec $container $host_dir $guest_dir $work_dir $ARGV
+    ;;
+  login)
+    volant_exit_if_not_exists $container
+    volant_exit_if_stopped $container
+    volant_exec $container $host_dir $guest_dir $work_dir bash
     ;;
   commit)
     volant_exit_if_not_exists $container
