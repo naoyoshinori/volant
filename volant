@@ -20,7 +20,8 @@ volant_init()
   fi
 
   if [ -e "$host_dir/.cache/name" ]; then
-    container=`cat $host_dir/.cache/name`
+    echo "Error creating this container."
+    exit 1
   else
     container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
     echo $container > $host_dir/.cache/name
@@ -52,6 +53,10 @@ volant_delete()
   if [ $? -ne 0 ]; then
     echo "Error deleting this container."
     exit 1
+  fi
+
+  if [ -e "$host_dir/.cache/name" ]; then
+    rm $host_dir/.cache/name
   fi
 }
 
