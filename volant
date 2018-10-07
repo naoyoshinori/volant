@@ -5,12 +5,32 @@ DEVICE_NAME=volant
 
 volant_init()
 {
-  local container=$1
-  local image=$2
+  local host_dir=$1
+  local guest_dir=$2
+  local volantfile=$3
+  local image=$4
 
   if [ "$image" = "" ]; then
     echo "The image is blank. Please set the image."
     exit 1
+  fi
+
+  if [ ! -e "$host_dir/.cache" ]; then
+    mkdir -p $host_dir/.cache
+  fi
+
+  if [ -e "$host_dir/.cache/name" ]; then
+    container=`cat $host_dir/.cache/name`
+  else
+    container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
+    echo $container > $host_dir/.cache/name
+  fi
+
+  if [ ! -e "$host_dir/$volantfile" ]; then
+    cat << EOF > $host_dir/$volantfile
+#!/bin/sh
+
+EOF
   fi
 
   lxc init $image $container
@@ -81,6 +101,11 @@ volant_run()
   local host_dir=$2
   local guest_dir=$3
   local volantfile=$4
+
+  if [ ! -e "$host_dir/$volantfile" ]; then
+    echo "This '$volantfile' file does not exist."
+    exit 1
+  fi
 
   lxc exec $container -- bash -c "cd $guest_dir; bash $volantfile"
 }
@@ -166,6 +191,11 @@ volant_device_remove()
 volant_exit_if_exists()
 {
   local container=$1
+
+  if [ "$container" = "" ]; then
+    return 0
+  fi
+
   local name=$(lxc list $container --format csv -c n)
 
   if [ "$name" != "" ]; then
@@ -177,6 +207,12 @@ volant_exit_if_exists()
 volant_exit_if_not_exists()
 {
   local container=$1
+
+  if [ "$container" = "" ]; then
+    echo "This container does not exist."
+    exit 1
+  fi
+
   local name=$(lxc list $container --format csv -c n)
 
   if [ "$name" = "" ]; then
@@ -234,7 +270,7 @@ Command:
 
   volant exec [--work-dir path] -- <arguments...>
 
-  volant login
+  volant login [--work-dir path]
 
   volant commit
 
@@ -275,24 +311,8 @@ do
   esac
 done
 
-if [ "$volantfile" = "" ]; then
-  volantfile=Volantfile.sh
-fi
-
-if [ ! -e "$volantfile" ]; then
-  echo "This '$volantfile' file does not exist."
-  exit 1
-fi
-
-if [ ! -e .cache ]; then
-  mkdir -p .cache
-fi
-
-if [ -e ".cache/name" ]; then
-  container=`cat .cache/name`
-else
-  container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
-  echo $container > .cache/name
+if [ "$COMMAND" = "" ]; then
+  usage && exit 1
 fi
 
 if [ "$host_dir" = "" ]; then
@@ -307,14 +327,20 @@ if [ "$work_dir" = "" ]; then
   work_dir=.
 fi
 
-if [ "$COMMAND" = "" ]; then
-  usage && exit 1
+if [ -e "$host_dir/.cache/name" ]; then
+  container=`cat $host_dir/.cache/name`
+else
+  container=""
+fi
+
+if [ "$volantfile" = "" ]; then
+  volantfile=Volantfile.sh
 fi
 
 case "$COMMAND" in
   init)
     volant_exit_if_exists $container
-    volant_init $container $*
+    volant_init $host_dir $guest_dir $volantfile $*
     ;;
   delete)
     volant_exit_if_not_exists $container
