@@ -18,7 +18,7 @@ volant start
 volant stop
 volant status
 volant run
-volant exec -- <arguments...>
+volant exec [--work-dir path] -- <arguments...>
 volant commit
 volant rollback
 volant info

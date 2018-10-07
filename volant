@@ -90,9 +90,10 @@ volant_exec()
   local container=$1
   local host_dir=$2
   local guest_dir=$3
-  shift 3
+  local work_dir=$4
+  shift 4
 
-  lxc exec $container -- bash -c "cd $guest_dir; exec $*"
+  lxc exec $container -- bash -c "cd $guest_dir; cd $work_dir; exec $*"
 }
 
 volant_commit()
@@ -231,7 +232,7 @@ Command:
 
   volant run
 
-  volant exec -- <arguments...>
+  volant exec [--work-dir path] -- <arguments...>
 
   volant commit
 
@@ -263,10 +264,11 @@ do
     commit|rollback| \
     info|list)
                          COMMAND=$1; shift 1;;
+    --work-dir)          work_dir=$2; shift $(( $# >= 2 ? 2 : 1 ));;
     --)                  shift 1; ARGV=$*;;
-    -h|--help)           usage && exit 0;;
-    --version)           version && exit 0;;
-    *)                   break ;;
+    -h|--help)           usage; exit 0;;
+    --version)           version; exit 0;;
+    *)                   break;;
   esac
 done
 
@@ -296,6 +298,10 @@ fi
 
 if [ "$guest_dir" = "" ]; then
   guest_dir=/volant
+fi
+
+if [ "$work_dir" = "" ]; then
+  work_dir=.
 fi
 
 if [ "$COMMAND" = "" ]; then
@@ -334,7 +340,7 @@ case "$COMMAND" in
   exec)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $host_dir $guest_dir $ARGV
+    volant_exec $container $host_dir $guest_dir $work_dir $ARGV
     ;;
   commit)
     volant_exit_if_not_exists $container
