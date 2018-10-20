@@ -1,12 +1,12 @@
 #!/bin/sh
 
-VERSION=0.0.6
+VERSION=0.0.7
 DEVICE_NAME=volant
 
 volant_init()
 {
-  local host_dir=$1
-  local guest_dir=$2
+  local volant_root=$1
+  local volant_mp=$2
   local volantfile=$3
   local image=$4
 
@@ -15,20 +15,20 @@ volant_init()
     exit 1
   fi
 
-  if [ ! -e "$host_dir/.cache" ]; then
-    mkdir -p $host_dir/.cache
+  if [ ! -e "$volant_root/.cache" ]; then
+    mkdir -p $volant_root/.cache
   fi
 
-  if [ -e "$host_dir/.cache/name" ]; then
+  if [ -e "$volant_root/.cache/name" ]; then
     echo "Error creating this container."
     exit 1
   else
     container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
-    echo $container > $host_dir/.cache/name
+    echo $container > $volant_root/.cache/name
   fi
 
-  if [ ! -e "$host_dir/$volantfile" ]; then
-    cat << EOF > $host_dir/$volantfile
+  if [ ! -e "$volant_root/$volantfile" ]; then
+    cat << EOF > $volant_root/$volantfile
 #!/bin/sh
 
 EOF
@@ -55,16 +55,16 @@ volant_delete()
     exit 1
   fi
 
-  if [ -e "$host_dir/.cache/name" ]; then
-    rm $host_dir/.cache/name
+  if [ -e "$volant_root/.cache/name" ]; then
+    rm $volant_root/.cache/name
   fi
 }
 
 volant_start()
 {
   local container=$1
-  local host_dir=$2
-  local guest_dir=$3
+  local volant_root=$2
+  local volant_mp=$3
   local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
 
   lxc restore $container $revision
@@ -74,7 +74,7 @@ volant_start()
     exit 1
   fi
 
-  volant_device_add $container $host_dir $guest_dir
+  volant_device_add $container $volant_root $volant_mp
 
   lxc start $container
 
@@ -87,8 +87,8 @@ volant_start()
 volant_stop()
 {
   local container=$1
-  local host_dir=$2
-  local guest_dir=$3
+  local volant_root=$2
+  local volant_mp=$3
 
   lxc stop $container
 
@@ -97,33 +97,33 @@ volant_stop()
     exit 1
   fi
 
-  volant_device_remove $container $host_dir $guest_dir
+  volant_device_remove $container $volant_root $volant_mp
 }
 
 volant_run()
 {
   local container=$1
-  local host_dir=$2
-  local guest_dir=$3
+  local volant_root=$2
+  local volant_mp=$3
   local volantfile=$4
 
-  if [ ! -e "$host_dir/$volantfile" ]; then
+  if [ ! -e "$volant_root/$volantfile" ]; then
     echo "This '$volantfile' file does not exist."
     exit 1
   fi
 
-  lxc exec $container -- bash -c "cd $guest_dir; bash $volantfile"
+  lxc exec $container -- bash -c "cd $volant_mp; bash $volantfile"
 }
 
 volant_exec()
 {
   local container=$1
-  local host_dir=$2
-  local guest_dir=$3
-  local work_dir=$4
+  local volant_root=$2
+  local volant_mp=$3
+  local home_dir=$4
   shift 4
 
-  lxc exec $container -- bash -c "cd $guest_dir; cd $work_dir; exec $*"
+  lxc exec $container -- bash -c "cd $volant_mp; cd $home_dir; exec $*"
 }
 
 volant_commit()
@@ -168,10 +168,10 @@ volant_rollback()
 volant_device_add()
 {
   local container=$1
-  local host_dir=$2
-  local guest_dir=$3
+  local volant_root=$2
+  local volant_mp=$3
 
-  lxc config device add $container $DEVICE_NAME disk source=$host_dir path=$guest_dir 1> /dev/null
+  lxc config device add $container $DEVICE_NAME disk source=$volant_root path=$volant_mp 1> /dev/null
 
   if [ $? -ne 0 ]; then
     echo "Error adding device to this container."
@@ -182,8 +182,8 @@ volant_device_add()
 volant_device_remove()
 {
   local container=$1
-  local host_dir=$2
-  local guest_dir=$3
+  local volant_root=$2
+  local volant_mp=$3
 
   lxc config device remove $container $DEVICE_NAME 1> /dev/null
 
@@ -273,9 +273,9 @@ Command:
 
   volant run
 
-  volant exec [--work-dir path] -- <arguments...>
+  volant exec [-d|--home-dir path] -- <arguments...>
 
-  volant login [--work-dir path]
+  volant login [-d|--home-dir path]
 
   volant commit
 
@@ -287,7 +287,7 @@ Command:
 
 Options:
 
-  --version                 this version
+  -v, --version             this version
 
   -h, --hellp               print this help text
 EOF
@@ -298,42 +298,63 @@ version()
   echo "volant version $VERSION"
 }
 
-while true
+for arg in $@
 do
-  case "$1" in
+  case $arg in
     init|delete| \
     start|stop|status| \
     run|exec| \
     login| \
     commit|rollback| \
     info|list)
-                         COMMAND=$1; shift 1;;
-    --work-dir)          work_dir=$2; shift $(( $# >= 2 ? 2 : 1 ));;
-    --)                  shift 1; ARGV=$*;;
-    -h|--help)           usage; exit 0;;
-    --version)           version; exit 0;;
-    *)                   break;;
+      command=$arg
+      shift
+      ;;
+    -C=*)
+      volant_root=${arg#*=}
+      shift
+      ;;
+    -d=*|--home-dir=*)
+      home_dir=${arg#*=}
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -v|--version)
+      version
+      exit 0
+      ;;
+    --)
+      shift
+      ARGV=$*
+      break
+      ;;
+    *)
+      break
+      ;;
   esac
 done
 
-if [ "$COMMAND" = "" ]; then
+if [ "$command" = "" ]; then
   usage && exit 1
 fi
 
-if [ "$host_dir" = "" ]; then
-  host_dir=`pwd`
+if [ "$volant_root" = "" ]; then
+  volant_root=`pwd`
 fi
 
-if [ "$guest_dir" = "" ]; then
-  guest_dir=/volant
+if [ "$volant_mp" = "" ]; then
+  volant_mp=/volant
 fi
 
-if [ "$work_dir" = "" ]; then
-  work_dir=.
+if [ "$home_dir" = "" ]; then
+  home_dir=.
 fi
 
-if [ -e "$host_dir/.cache/name" ]; then
-  container=`cat $host_dir/.cache/name`
+if [ -e "$volant_root/.cache/name" ]; then
+  container=`cat $volant_root/.cache/name`
 else
   container=""
 fi
@@ -342,10 +363,10 @@ if [ "$volantfile" = "" ]; then
   volantfile=Volantfile.sh
 fi
 
-case "$COMMAND" in
+case "$command" in
   init)
     volant_exit_if_exists $container
-    volant_init $host_dir $guest_dir $volantfile $*
+    volant_init $volant_root $volant_mp $volantfile $*
     ;;
   delete)
     volant_exit_if_not_exists $container
@@ -355,12 +376,12 @@ case "$COMMAND" in
   start)
     volant_exit_if_not_exists $container
     volant_exit_if_started $container
-    volant_start $container $host_dir $guest_dir
+    volant_start $container $volant_root $volant_mp
     ;;
   stop)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_stop $container $host_dir $guest_dir
+    volant_stop $container $volant_root $volant_mp
     ;;
   status)
     volant_exit_if_not_exists $container
@@ -369,17 +390,17 @@ case "$COMMAND" in
   run)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_run $container $host_dir $guest_dir $volantfile
+    volant_run $container $volant_root $volant_mp $volantfile
     ;;
   exec)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $host_dir $guest_dir $work_dir $ARGV
+    volant_exec $container $volant_root $volant_mp $home_dir $ARGV
     ;;
   login)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $host_dir $guest_dir $work_dir bash
+    volant_exec $container $volant_root $volant_mp $home_dir bash
     ;;
   commit)
     volant_exit_if_not_exists $container
