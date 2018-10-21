@@ -23,7 +23,9 @@ volant_init()
     echo "Error creating this container."
     exit 1
   else
-    container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
+    local name=`basename $volant_root`
+    local random=`date | md5sum | awk '{print substr($1, 0, 9)}'`
+    local container=volant-$name-$random
     echo $container > $volant_root/.volant/name
   fi
 
