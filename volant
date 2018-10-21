@@ -15,16 +15,16 @@ volant_init()
     exit 1
   fi
 
-  if [ ! -e "$volant_root/.cache" ]; then
-    mkdir -p $volant_root/.cache
+  if [ ! -e "$volant_root/.volant" ]; then
+    mkdir -p $volant_root/.volant
   fi
 
-  if [ -e "$volant_root/.cache/name" ]; then
+  if [ -e "$volant_root/.volant/name" ]; then
     echo "Error creating this container."
     exit 1
   else
     container=vm-`date | md5sum | awk '{print substr($1, 0, 9)}'`
-    echo $container > $volant_root/.cache/name
+    echo $container > $volant_root/.volant/name
   fi
 
   if [ ! -e "$volant_root/$volantfile" ]; then
@@ -55,8 +55,8 @@ volant_delete()
     exit 1
   fi
 
-  if [ -e "$volant_root/.cache/name" ]; then
-    rm $volant_root/.cache/name
+  if [ -e "$volant_root/.volant/name" ]; then
+    rm $volant_root/.volant/name
   fi
 }
 
@@ -353,8 +353,8 @@ if [ "$home_dir" = "" ]; then
   home_dir=.
 fi
 
-if [ -e "$volant_root/.cache/name" ]; then
-  container=`cat $volant_root/.cache/name`
+if [ -e "$volant_root/.volant/name" ]; then
+  container=`cat $volant_root/.volant/name`
 else
   container=""
 fi
