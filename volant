@@ -1,12 +1,12 @@
 #!/bin/sh
 
-VERSION=0.0.7
+VERSION=0.0.8
 DEVICE_NAME=volant
 
 volant_init()
 {
-  local volant_root=$1
-  local volant_mp=$2
+  local host_root=$1
+  local mount_point=$2
   local volantfile=$3
   local image=$4
 
@@ -15,22 +15,22 @@ volant_init()
     exit 1
   fi
 
-  if [ ! -e "$volant_root/.volant" ]; then
-    mkdir -p $volant_root/.volant
+  if [ ! -e "$host_root/.volant" ]; then
+    mkdir -p $host_root/.volant
   fi
 
-  if [ -e "$volant_root/.volant/name" ]; then
+  if [ -e "$host_root/.volant/name" ]; then
     echo "Error creating this container."
     exit 1
   else
-    local name=`basename $volant_root`
+    local name=`basename $host_root`
     local random=`date | md5sum | awk '{print substr($1, 0, 9)}'`
     local container=volant-$name-$random
-    echo $container > $volant_root/.volant/name
+    echo $container > $host_root/.volant/name
   fi
 
-  if [ ! -e "$volant_root/$volantfile" ]; then
-    cat << EOF > $volant_root/$volantfile
+  if [ ! -e "$host_root/$volantfile" ]; then
+    cat << EOF > $host_root/$volantfile
 #!/bin/sh
 
 EOF
@@ -57,16 +57,16 @@ volant_delete()
     exit 1
   fi
 
-  if [ -e "$volant_root/.volant/name" ]; then
-    rm $volant_root/.volant/name
+  if [ -e "$host_root/.volant/name" ]; then
+    rm $host_root/.volant/name
   fi
 }
 
 volant_start()
 {
   local container=$1
-  local volant_root=$2
-  local volant_mp=$3
+  local host_root=$2
+  local mount_point=$3
   local revision=`lxc info $container | grep -E 'snap[0-9]+' | tail -n 1 | awk '{print $1}'`
 
   lxc restore $container $revision
@@ -76,7 +76,7 @@ volant_start()
     exit 1
   fi
 
-  volant_device_add $container $volant_root $volant_mp
+  volant_device_add $container $host_root $mount_point
 
   lxc start $container
 
@@ -89,8 +89,8 @@ volant_start()
 volant_stop()
 {
   local container=$1
-  local volant_root=$2
-  local volant_mp=$3
+  local host_root=$2
+  local mount_point=$3
 
   lxc stop $container
 
@@ -99,33 +99,33 @@ volant_stop()
     exit 1
   fi
 
-  volant_device_remove $container $volant_root $volant_mp
+  volant_device_remove $container $host_root $mount_point
 }
 
 volant_run()
 {
   local container=$1
-  local volant_root=$2
-  local volant_mp=$3
+  local host_root=$2
+  local mount_point=$3
   local volantfile=$4
 
-  if [ ! -e "$volant_root/$volantfile" ]; then
+  if [ ! -e "$host_root/$volantfile" ]; then
     echo "This '$volantfile' file does not exist."
     exit 1
   fi
 
-  lxc exec $container -- bash -c "cd $volant_mp; bash $volantfile"
+  lxc exec $container -- bash -c "cd $mount_point; bash $volantfile"
 }
 
 volant_exec()
 {
   local container=$1
-  local volant_root=$2
-  local volant_mp=$3
-  local home_dir=$4
+  local host_root=$2
+  local mount_point=$3
+  local guest_dir=$4
   shift 4
 
-  lxc exec $container -- bash -c "cd $volant_mp; cd $home_dir; exec $*"
+  lxc exec $container -- bash -c "cd $mount_point; cd $guest_dir; exec $*"
 }
 
 volant_commit()
@@ -170,10 +170,10 @@ volant_rollback()
 volant_device_add()
 {
   local container=$1
-  local volant_root=$2
-  local volant_mp=$3
+  local host_root=$2
+  local mount_point=$3
 
-  lxc config device add $container $DEVICE_NAME disk source=$volant_root path=$volant_mp 1> /dev/null
+  lxc config device add $container $DEVICE_NAME disk source=$host_root path=$mount_point 1> /dev/null
 
   if [ $? -ne 0 ]; then
     echo "Error adding device to this container."
@@ -184,8 +184,8 @@ volant_device_add()
 volant_device_remove()
 {
   local container=$1
-  local volant_root=$2
-  local volant_mp=$3
+  local host_root=$2
+  local mount_point=$3
 
   lxc config device remove $container $DEVICE_NAME 1> /dev/null
 
@@ -255,7 +255,7 @@ usage()
   cat <<EOF
 Usage:
 
-  volant <command> <arguments...> [options...]
+  volant [--host-root=path] <command> [<args>]
 
 Description:
 
@@ -275,9 +275,9 @@ Command:
 
   volant run
 
-  volant exec [-d|--home-dir path] -- <arguments...>
+  volant exec [--guest-dir=path] -- <args>
 
-  volant login [-d|--home-dir path]
+  volant login [--guest-dir=path]
 
   volant commit
 
@@ -312,12 +312,12 @@ do
       command=$arg
       shift
       ;;
-    -C=*)
-      volant_root=${arg#*=}
+    --host-root=*)
+      host_root=${arg#*=}
       shift
       ;;
-    -d=*|--home-dir=*)
-      home_dir=${arg#*=}
+    --guest-dir=*)
+      guest_dir=${arg#*=}
       shift
       ;;
     -h|--help)
@@ -343,20 +343,20 @@ if [ "$command" = "" ]; then
   usage && exit 1
 fi
 
-if [ "$volant_root" = "" ]; then
-  volant_root=`pwd`
+if [ "$host_root" = "" ]; then
+  host_root=`pwd`
 fi
 
-if [ "$volant_mp" = "" ]; then
-  volant_mp=/volant
+if [ "$mount_point" = "" ]; then
+  mount_point=/volant
 fi
 
-if [ "$home_dir" = "" ]; then
-  home_dir=.
+if [ "$guest_dir" = "" ]; then
+  guest_dir=.
 fi
 
-if [ -e "$volant_root/.volant/name" ]; then
-  container=`cat $volant_root/.volant/name`
+if [ -e "$host_root/.volant/name" ]; then
+  container=`cat $host_root/.volant/name`
 else
   container=""
 fi
@@ -368,7 +368,7 @@ fi
 case "$command" in
   init)
     volant_exit_if_exists $container
-    volant_init $volant_root $volant_mp $volantfile $*
+    volant_init $host_root $mount_point $volantfile $*
     ;;
   delete)
     volant_exit_if_not_exists $container
@@ -378,12 +378,12 @@ case "$command" in
   start)
     volant_exit_if_not_exists $container
     volant_exit_if_started $container
-    volant_start $container $volant_root $volant_mp
+    volant_start $container $host_root $mount_point
     ;;
   stop)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_stop $container $volant_root $volant_mp
+    volant_stop $container $host_root $mount_point
     ;;
   status)
     volant_exit_if_not_exists $container
@@ -392,17 +392,17 @@ case "$command" in
   run)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_run $container $volant_root $volant_mp $volantfile
+    volant_run $container $host_root $mount_point $volantfile
     ;;
   exec)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $volant_root $volant_mp $home_dir $ARGV
+    volant_exec $container $host_root $mount_point $guest_dir $ARGV
     ;;
   login)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $volant_root $volant_mp $home_dir bash
+    volant_exec $container $host_root $mount_point $guest_dir bash
     ;;
   commit)
     volant_exit_if_not_exists $container

@@ -6,7 +6,7 @@ This 'volant' creates a container with immutable lxc. This container can be repe
 ## Usage
 
 ```
-volant <command> <arguments...> [options...]
+volant [--host-root=path] <command> [<args>]
 ```
 
 ### Command
@@ -18,8 +18,9 @@ volant start
 volant stop
 volant status
 volant run
-volant exec [--work-dir path] -- <arguments...>
+volant exec [--guest-dir=path] -- <args>
 volant login
+volant login [--guest-dir=path]
 volant commit
 volant rollback
 volant info
