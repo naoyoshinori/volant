@@ -1,7 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
-VERSION=0.0.8
-DEVICE_NAME=volant
+VERSION=0.0.9
 
 volant_init()
 {
@@ -27,6 +26,10 @@ volant_init()
     local random=`date | md5sum | awk '{print substr($1, 0, 9)}'`
     local container=volant-$name-$random
     echo $container > $host_root/.volant/name
+  fi
+
+  if [ ! -e "$host_root/.volant/volume" ]; then
+    echo 'mp0 $VOLANT_ROOT /volant' > $host_root/.volant/volume
   fi
 
   if [ ! -e "$host_root/$volantfile" ]; then
@@ -60,6 +63,10 @@ volant_delete()
   if [ -e "$host_root/.volant/name" ]; then
     rm $host_root/.volant/name
   fi
+
+  if [ -e "$host_root/.volant/volume" ]; then
+    rm $host_root/.volant/volume
+  fi
 }
 
 volant_start()
@@ -76,7 +83,18 @@ volant_start()
     exit 1
   fi
 
-  volant_device_add $container $host_root $mount_point
+  if [ -e "$host_root/.volant/volume" ]; then
+    local VOLANT_ROOT=$host_root
+
+    cat $host_root/.volant/volume | while read line
+    do
+      set -- $line
+      local device_name=$1
+      local host_volume=$(eval echo $2)
+      local guest_volume=$3
+      volant_mount $container $device_name $host_volume $guest_volume
+    done
+  fi
 
   lxc start $container
 
@@ -99,7 +117,18 @@ volant_stop()
     exit 1
   fi
 
-  volant_device_remove $container $host_root $mount_point
+  if [ -e "$host_root/.volant/volume" ]; then
+    local VOLANT_ROOT=$host_root
+
+    cat $host_root/.volant/volume | while read line
+    do
+      set -- $line
+      local device_name=$1
+      local host_volume=$(eval echo $2)
+      local guest_volume=$3
+      volant_umount $container $device_name $host_volume $guest_volume
+    done
+  fi
 }
 
 volant_run()
@@ -167,13 +196,19 @@ volant_rollback()
   fi
 }
 
-volant_device_add()
+volant_mount()
 {
   local container=$1
-  local host_root=$2
-  local mount_point=$3
+  local device_name=$2
+  local host_volume=$3
+  local guest_volume=$4
 
-  lxc config device add $container $DEVICE_NAME disk source=$host_root path=$mount_point 1> /dev/null
+  if [ ! -e $host_volume ]; then
+    echo "The directory could not be found. '$host_volume'"
+    exit 1
+  fi
+
+  lxc config device add $container $device_name disk source=$host_volume path=$guest_volume 1> /dev/null
 
   if [ $? -ne 0 ]; then
     echo "Error adding device to this container."
@@ -181,13 +216,14 @@ volant_device_add()
   fi
 }
 
-volant_device_remove()
+volant_umount()
 {
   local container=$1
-  local host_root=$2
-  local mount_point=$3
+  local device_name=$2
+  local host_volume=$3
+  local guest_volume=$4
 
-  lxc config device remove $container $DEVICE_NAME 1> /dev/null
+  lxc config device remove $container $device_name 1> /dev/null
 
   if [ $? -ne 0 ]; then
     echo "Error deleting device from this container."
