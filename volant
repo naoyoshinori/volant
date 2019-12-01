@@ -144,13 +144,14 @@ volant_run()
   local host_root=$2
   local mount_point=$3
   local volantfile=$4
+  shift 4
 
   if [ ! -e "$host_root/$volantfile" ]; then
     echo "This '$volantfile' file does not exist."
     exit 1
   fi
 
-  lxc exec $container -- bash -c "cd $mount_point; bash $volantfile"
+  lxc exec $container -- bash -c "cd $mount_point; source $volantfile; $*"
 }
 
 volant_exec()
@@ -315,7 +316,7 @@ Command:
 
   volant status
 
-  volant run
+  volant run -- command <args>
 
   volant exec -- <args>
 
@@ -422,7 +423,7 @@ case "$command" in
   run)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_run $container $host_root $mount_point $volantfile
+    volant_run $container $host_root $mount_point $volantfile $ARGV
     ;;
   exec)
     volant_exit_if_not_exists $container
