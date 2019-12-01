@@ -46,6 +46,13 @@ EOF
     exit 1
   fi
 
+  lxc config set $container raw.idmap "both $(id -u) 0"
+
+  if [ $? -ne 0 ]; then
+    echo "Error creating this container."
+    exit 1
+  fi
+
   volant_commit $container
 }
 
