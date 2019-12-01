@@ -151,10 +151,9 @@ volant_exec()
   local container=$1
   local host_root=$2
   local mount_point=$3
-  local guest_dir=$4
-  shift 4
+  shift 3
 
-  lxc exec $container -- bash -c "cd $mount_point; cd $guest_dir; exec $*"
+  lxc exec $container -- bash -c "cd $mount_point; exec $*"
 }
 
 volant_commit()
@@ -291,7 +290,7 @@ usage()
   cat <<EOF
 Usage:
 
-  volant [--host-root=path] <command> [<args>]
+  volant <command> [<args>]
 
 Description:
 
@@ -311,9 +310,9 @@ Command:
 
   volant run
 
-  volant exec [--guest-dir=path] -- <args>
+  volant exec -- <args>
 
-  volant login [--guest-dir=path]
+  volant login
 
   volant commit
 
@@ -348,14 +347,6 @@ do
       command=$arg
       shift
       ;;
-    --host-root=*)
-      host_root=${arg#*=}
-      shift
-      ;;
-    --guest-dir=*)
-      guest_dir=${arg#*=}
-      shift
-      ;;
     -h|--help)
       usage
       exit 0
@@ -385,10 +376,6 @@ fi
 
 if [ "$mount_point" = "" ]; then
   mount_point=/volant
-fi
-
-if [ "$guest_dir" = "" ]; then
-  guest_dir=.
 fi
 
 if [ -e "$host_root/.volant/name" ]; then
@@ -433,12 +420,12 @@ case "$command" in
   exec)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $host_root $mount_point $guest_dir $ARGV
+    volant_exec $container $host_root $mount_point $ARGV
     ;;
   login)
     volant_exit_if_not_exists $container
     volant_exit_if_stopped $container
-    volant_exec $container $host_root $mount_point $guest_dir bash
+    volant_exec $container $host_root $mount_point bash
     ;;
   commit)
     volant_exit_if_not_exists $container
