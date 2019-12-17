@@ -3,10 +3,14 @@ volant
 
 This 'volant' creates a container with immutable lxc. This container can be repeatedly tested.
 
+## Requirement
+* bash
+* LXD 3.0 LTS
+
 ## Usage
 
 ```
-volant [--host-root=path] <command> [<args>]
+volant <command> [<args>]
 ```
 
 ### Command
@@ -17,10 +21,9 @@ volant delete
 volant start
 volant stop
 volant status
-volant run
-volant exec [--guest-dir=path] -- <args>
+volant run -- command <args>
+volant exec -- <args>
 volant login
-volant login [--guest-dir=path]
 volant commit
 volant rollback
 volant info
@@ -29,33 +32,51 @@ volant list
 
 ## Example
 
-Create a new project.
-
-```
-mkdir my_project
-cd my_project
-touch Volantfile.sh
-```
-
 Create a container.
 
 ```
 volant init ubuntu:18.04
 ```
 
-Edit the 'Volantfile.sh' file.
+Edit the 'Volantfile.sh' file created when creating the container.
 
 ```
 #!/bin/sh
 
-apt update
-apt upgrade -y
+init()
+{
+  sed -i -e 's|http://archive.ubuntu.com|http://jp.archive.ubuntu.com|g' /etc/apt/sources.list
+  dhclient
+}
+
+upgrade()
+{
+  apt update
+  apt upgrade -y
+}
+
+install()
+{
+  apt install -y build-essential patch ruby-dev zlib1g-dev liblzma-dev # Nokogiri
+  apt install -y sqlite3 libsqlite3-dev # SQLite
+  apt install -y nodejs # Node.js
+  apt autoremove -y
+
+  cat << EOF > ~/.gemrc
+gem: --no-document
+EOF
+
+  gem install rails -v "5.2.1"
+  gem install bundler -v "1.17.1"
+}
 ```
 
-Execute 'Volantfile.sh' file with 'run' command.
+Volant reads the 'Volantfile.sh' file when the 'run' command is executed. The function of 'Volantfile.sh' can be executed in the container.
 
 ```
-volant run
+volant run -- init
+volant run -- upgrade
+volant run -- install
 ```
 
 Execute the command on the guest's container.
